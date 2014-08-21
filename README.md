@@ -13,6 +13,7 @@ Use Drawables of size `24dp` as FabDrawables to get the desired look. Drawables 
 1. Downlad
 2. Copy all files to:	your_project/libs/FloatingActionButton 
 3. Add dependency in build.gradle of your project
+
 	```gradle
 	dependencies {
 		compile fileTree(include: ['*.jar'], dir: 'libs')
