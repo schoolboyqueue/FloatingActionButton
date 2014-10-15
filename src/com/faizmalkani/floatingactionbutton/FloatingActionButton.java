@@ -15,40 +15,38 @@ import android.util.AttributeSet;
 import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
-import android.view.animation.AccelerateInterpolator;
-import android.view.animation.Animation;
-import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
-import android.view.animation.TranslateAnimation;
 import android.widget.AbsListView;
-
-import com.nineoldandroids.animation.ObjectAnimator;
-import com.nineoldandroids.view.ViewHelper;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
+import jeremycarter.com.lumen.R;
+
 public class FloatingActionButton extends View {
 
     private final Interpolator mInterpolator = new AccelerateDecelerateInterpolator();
+
     private final Paint mButtonPaint;
     private final Paint mDrawablePaint;
     private Bitmap mBitmap;
-    private int mScreenHeight;
     private int mColor;
-    private float mCurrentY;
     private boolean mHidden = false;
-    private float currentY;
+    private float mCurrentY;
     private Display display;
+    protected AbsListView mListView;
+    private static final int TRANSLATE_DURATION_MILLIS = 200;
 
     public FloatingActionButton(Context context) {
         this(context, null);
     }
 
-    public FloatingActionButton(Context context, AttributeSet attributeSet) {
-        this(context, attributeSet, 0);
+    public FloatingActionButton(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
     }
 
     public FloatingActionButton(Context context, AttributeSet attrs, int defStyleAttr) {
@@ -96,7 +94,6 @@ public class FloatingActionButton extends View {
                 context.getSystemService(Context.WINDOW_SERVICE);
         display = mWindowManager.getDefaultDisplay();
         Point size = getSize();
-        mScreenHeight = size.y;
     }
 
     @TargetApi(Build.VERSION_CODES.HONEYCOMB_MR2)
@@ -146,51 +143,57 @@ public class FloatingActionButton extends View {
         invalidate();
         return super.onTouchEvent(event);
     }
-
-    public void hide(boolean hide) {
-        try {
-            if (mHidden == hide) {
-                currentY = ViewHelper.getY(this);
-                com.nineoldandroids.animation.ObjectAnimator mHideAnimation = com.nineoldandroids.animation.ObjectAnimator.ofFloat(this,
-                        "Y", mScreenHeight);
-                mHideAnimation.setInterpolator(new AccelerateInterpolator());
-                mHideAnimation.start();
-            }
-        } catch (Exception e) {
-            currentY = ViewHelper.getY(this);
-            Animation animation = new TranslateAnimation(0.0f, 0.0f, 0.0f,
-                    currentY);
-            animation.setDuration(1000);
-            animation.setFillAfter(true);
-            startAnimation(animation);
-            setVisibility(View.GONE);
-        }
-        mHidden = true;
+    public void show() {
+        show(true);
     }
 
-    public void show(boolean hide) {
-        try {
-            if (mHidden == hide) {
-                ObjectAnimator mShowAnimation = ObjectAnimator.ofFloat(this,
-                        "Y", currentY);
-                mShowAnimation.setInterpolator(new DecelerateInterpolator());
-                mShowAnimation.start();
+    public void hide() {
+        hide(true);
+    }
+    public void show(boolean animate) {
+        toggle(true, animate, false);
+    }
 
+    public void hide(boolean animate) {
+        toggle(false, animate, false);
+    }
+
+    private void toggle(final boolean visible, final boolean animate, boolean force) {
+        if (mHidden != visible || force) {
+            mHidden = visible;
+            int height = getHeight();
+            if (height == 0 && !force) {
+                ViewTreeObserver vto = getViewTreeObserver();
+                if (vto.isAlive()) {
+                    vto.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                        @Override
+                        public boolean onPreDraw() {
+                            ViewTreeObserver currentVto = getViewTreeObserver();
+                            if (currentVto.isAlive()) {
+                                currentVto.removeOnPreDrawListener(this);
+                            }
+                            toggle(visible, animate, true);
+                            return true;
+                        }
+                    });
+                    return;
+                }
             }
-        } catch (Exception e) {
-            setVisibility(View.VISIBLE);
-            currentY = ViewHelper.getY(this);
-            Animation animation = new TranslateAnimation(0.0f, 0.0f, currentY,
-                    0.0f);
-            animation.setDuration(500);
-            this.startAnimation(animation);
+            int translationY = visible ? 0 : height + getMarginBottom();
+            if (animate) {
+                animate().setInterpolator(mInterpolator)
+                        .setDuration(TRANSLATE_DURATION_MILLIS)
+                        .translationY(translationY);
+            } else {
+                setTranslationY(translationY);
+            }
         }
-        mHidden = false;
     }
 
     public void listenTo(AbsListView listView) {
         if (null != listView) {
-            listView.setOnScrollListener(new DirectionScrollListener(this));
+            mListView = listView;
+            listView.setOnScrollListener(mOnScrollListener);
         }
     }
 
@@ -200,4 +203,37 @@ public class FloatingActionButton extends View {
         hsv[2] *= 0.8f;
         return Color.HSVToColor(hsv);
     }
+
+    protected int getListViewScrollY() {
+        View topChild = mListView.getChildAt(0);
+        return topChild == null ? 0 : mListView.getFirstVisiblePosition() * topChild.getHeight() -
+                topChild.getTop();
+    }
+    private int getMarginBottom() {
+        int marginBottom = 0;
+        final ViewGroup.LayoutParams layoutParams = getLayoutParams();
+        if (layoutParams instanceof ViewGroup.MarginLayoutParams) {
+            marginBottom = ((ViewGroup.MarginLayoutParams) layoutParams).bottomMargin;
+        }
+        return marginBottom;
+    }
+
+    private final AbsListView.OnScrollListener mOnScrollListener = new AbsListView.OnScrollListener() {
+        @Override
+        public void onScrollStateChanged(AbsListView view, int scrollState) {
+        }
+
+        @Override
+        public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+            int newScrollY = getListViewScrollY();
+            if (newScrollY == mCurrentY) {
+                return;
+            } else if (newScrollY > mCurrentY && newScrollY != 0) {
+                hide();
+            } else if (newScrollY < mCurrentY) {
+                show();
+            }
+            mCurrentY = newScrollY;
+        }
+    };
 }
