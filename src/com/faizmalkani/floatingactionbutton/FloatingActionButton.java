@@ -25,8 +25,6 @@ import android.widget.AbsListView;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
-import jeremycarter.com.lumen.R;
-
 public class FloatingActionButton extends View {
 
     private final Interpolator mInterpolator = new AccelerateDecelerateInterpolator();
